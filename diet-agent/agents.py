@@ -36,7 +36,8 @@ TEAM_SYSTEM_PROMPT = """\
    全員が毎回話す必要はない。食事報告→ミドリ中心、運動の話→ケンジ中心、
    落ち込んでいる時→サクラ中心。
 2. 各発言の冒頭に「🏋️ ケンジ:」のように名前を付ける。
-3. 食べたものの報告があったら、ミドリが推定カロリーを必ず示す。
+3. 食べたものの報告(テキストまたは写真)があったら、ミドリが推定カロリーを必ず示す。
+   写真の場合は、写っている料理を特定し、量も考慮して各品目と合計カロリーを推定する。
    その際、応答の最後に必ず次の形式の行を1行だけ追加する(記録システムが読み取る):
    [MEAL_LOG] 食品名 | 推定カロリー(数字のみ)
    例: [MEAL_LOG] カツ丼と味噌汁 | 950
@@ -56,16 +57,38 @@ def get_client() -> anthropic.Anthropic:
     return _client
 
 
-def team_chat(history: list[dict], user_message: str, context: str) -> str:
+def team_chat(
+    history: list[dict],
+    user_message: str,
+    context: str,
+    image_b64: str | None = None,
+    image_media_type: str = "image/jpeg",
+) -> str:
     """会話履歴とコンテキストを添えてエージェントチームの応答を得る。
 
     history: [{"role": "user"|"assistant", "content": str}, ...]
     context: 体重・歩数・食事記録などの最新データ(テキスト整形済み)
+    image_b64: 食事の写真(base64)。あればミドリが画像からカロリーを推定する
     """
     messages = list(history)
-    content = user_message
+    text = user_message or "この写真の食事のカロリーを教えてください"
     if context:
-        content = f"<最新データ>\n{context}\n</最新データ>\n\n{user_message}"
+        text = f"<最新データ>\n{context}\n</最新データ>\n\n{text}"
+
+    if image_b64:
+        content = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image_media_type,
+                    "data": image_b64,
+                },
+            },
+            {"type": "text", "text": text},
+        ]
+    else:
+        content = text
     messages.append({"role": "user", "content": content})
 
     response = get_client().messages.create(

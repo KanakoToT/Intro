@@ -32,16 +32,44 @@ def index():
 # ---------- チャット ----------
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = ""
+    # 食事写真: "data:image/jpeg;base64,..." 形式のデータURL(任意)
+    image: str | None = None
+
+
+def _parse_data_url(data_url: str) -> tuple[str, str]:
+    """データURLを (media_type, base64データ) に分解する。"""
+    header, _, b64 = data_url.partition(",")
+    if not b64 or not header.startswith("data:"):
+        raise HTTPException(400, "画像の形式が不正です")
+    media_type = header.removeprefix("data:").split(";")[0] or "image/jpeg"
+    if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+        raise HTTPException(400, f"未対応の画像形式です: {media_type}")
+    return media_type, b64
 
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
+    if not req.message.strip() and not req.image:
+        raise HTTPException(400, "メッセージか写真のどちらかを送ってください")
+
     history = db.recent_messages(limit=20)
     context = db.build_context()
-    reply = agents.team_chat(history, req.message, context)
 
-    db.add_message("user", req.message)
+    image_b64 = None
+    media_type = "image/jpeg"
+    if req.image:
+        media_type, image_b64 = _parse_data_url(req.image)
+
+    reply = agents.team_chat(
+        history, req.message, context, image_b64=image_b64, image_media_type=media_type
+    )
+
+    # 履歴には画像そのものは保存しない(会話コンテキストの肥大化を防ぐ)
+    user_record = req.message.strip()
+    if req.image:
+        user_record = f"[食事の写真を送信] {user_record}".strip()
+    db.add_message("user", user_record)
     db.add_message("assistant", reply)
 
     # 栄養士が食事を認識したら自動で記録する

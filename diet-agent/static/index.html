@@ -73,6 +73,20 @@
       cursor: pointer;
     }
     form button:disabled { opacity: 0.5; }
+    #photoBtn { background: #fff; border: 1px solid #cbbfa8; color: #6b5d43; padding: 10px 12px; }
+    #preview {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 18px;
+      background: #fff;
+      border-top: 1px solid #e5e0d5;
+      font-size: 12px;
+      color: #6b5d43;
+    }
+    #preview img { height: 48px; border-radius: 8px; }
+    #preview button { border: none; background: none; cursor: pointer; color: #b00; }
+    .msg img.meal-photo { max-width: 100%; border-radius: 10px; display: block; margin-bottom: 6px; }
   </style>
 </head>
 <body>
@@ -87,10 +101,17 @@
   <div id="chat">
     <div class="msg team">🌸 サクラ: こんにちは!私たち3人があなたのダイエットをサポートします✨
 食べたもの・運動・体重、なんでも報告してくださいね。
-🥗 ミドリ: 食べたものを教えていただければ、カロリーを推定して記録します。
+🥗 ミドリ: 食べたものを言葉で教えるか、📷ボタンで写真を送ってください。カロリーを推定して記録します。
 🏋️ ケンジ: 歩数や運動の相談も任せてくれ!</div>
   </div>
+  <div id="preview">
+    <img id="previewImg" alt="送信する写真">
+    <span>写真を送信します</span>
+    <button type="button" id="clearPhoto">✕ 取り消す</button>
+  </div>
   <form id="form">
+    <input type="file" id="photo" accept="image/*" capture="environment" hidden>
+    <button type="button" id="photoBtn" title="食事の写真を撮る/選ぶ">📷</button>
     <input type="text" id="input" placeholder="例: お昼にカツ丼と味噌汁を食べました" autocomplete="off">
     <button type="submit" id="send">送信</button>
   </form>
@@ -102,28 +123,82 @@
     const send = document.getElementById("send");
     const status = document.getElementById("status");
 
-    function addMsg(text, cls) {
+    const photoInput = document.getElementById("photo");
+    const photoBtn = document.getElementById("photoBtn");
+    const preview = document.getElementById("preview");
+    const previewImg = document.getElementById("previewImg");
+    let pendingImage = null; // データURL (リサイズ済みJPEG)
+
+    function addMsg(text, cls, imageUrl) {
       const div = document.createElement("div");
       div.className = "msg " + cls;
-      div.textContent = text;
+      if (imageUrl) {
+        const img = document.createElement("img");
+        img.className = "meal-photo";
+        img.src = imageUrl;
+        div.appendChild(img);
+      }
+      if (text) div.appendChild(document.createTextNode(text));
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
       return div;
     }
 
+    // 写真は最大1024pxに縮小してJPEG化(通信量とAPIコストを抑える)
+    function resizeImage(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const max = 1024;
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    photoBtn.addEventListener("click", () => photoInput.click());
+
+    photoInput.addEventListener("change", async () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      pendingImage = await resizeImage(file);
+      previewImg.src = pendingImage;
+      preview.style.display = "flex";
+      input.placeholder = "写真についてひとこと(任意)";
+      input.focus();
+    });
+
+    document.getElementById("clearPhoto").addEventListener("click", () => {
+      pendingImage = null;
+      photoInput.value = "";
+      preview.style.display = "none";
+      input.placeholder = "例: お昼にカツ丼と味噌汁を食べました";
+    });
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const text = input.value.trim();
-      if (!text) return;
-      addMsg(text, "user");
+      if (!text && !pendingImage) return;
+      const image = pendingImage;
+      addMsg(text, "user", image);
       input.value = "";
+      pendingImage = null;
+      photoInput.value = "";
+      preview.style.display = "none";
+      input.placeholder = "例: お昼にカツ丼と味噌汁を食べました";
       send.disabled = true;
-      const waiting = addMsg("チームが考えています…", "info");
+      const waiting = addMsg(image ? "🥗 ミドリが写真を見ています…" : "チームが考えています…", "info");
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({ message: text, image: image }),
         });
         const data = await res.json();
         waiting.remove();
