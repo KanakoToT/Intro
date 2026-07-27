@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>仕事の秘書チーム</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+      background: #f4f6f9;
+      color: #26313f;
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    header {
+      padding: 14px 18px 0;
+      background: #fff;
+      border-bottom: 1px solid #dfe5ee;
+    }
+    header h1 { font-size: 17px; }
+    header p { font-size: 12px; color: #7b8798; margin-top: 4px; }
+    nav { display: flex; gap: 4px; margin-top: 12px; }
+    nav button {
+      font-size: 13px;
+      padding: 8px 14px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      color: #7b8798;
+      cursor: pointer;
+    }
+    nav button.active { color: #2f5d8c; border-bottom-color: #2f5d8c; font-weight: bold; }
+    nav button .badge {
+      display: inline-block;
+      margin-left: 5px;
+      padding: 1px 6px;
+      border-radius: 9px;
+      background: #e3e9f2;
+      color: #56637a;
+      font-size: 11px;
+    }
+    main { flex: 1; overflow-y: auto; }
+    .panel { display: none; padding: 16px 18px; flex-direction: column; gap: 12px; }
+    .panel.active { display: flex; }
+
+    /* チャット */
+    .msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; line-height: 1.7; font-size: 14px; }
+    .user { align-self: flex-end; background: #2f5d8c; color: #fff; border-bottom-right-radius: 4px; }
+    .team { align-self: flex-start; background: #fff; border: 1px solid #dfe5ee; border-bottom-left-radius: 4px; }
+    .info { align-self: center; font-size: 12px; color: #7b8798; }
+    .sources { align-self: flex-start; max-width: 88%; font-size: 12px; color: #56637a; line-height: 1.8; }
+    .sources a { color: #2f5d8c; }
+
+    /* Todo */
+    .todo {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 11px 13px;
+      background: #fff;
+      border: 1px solid #dfe5ee;
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    .todo.done { opacity: 0.5; }
+    .todo input[type=checkbox] { margin-top: 3px; width: 17px; height: 17px; flex: none; }
+    .todo .body { flex: 1; }
+    .todo .meta { font-size: 12px; color: #7b8798; margin-top: 3px; }
+    .todo .meta .overdue { color: #c0392b; font-weight: bold; }
+    .todo .pri { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: #e3e9f2; color: #56637a; }
+    .todo .pri.高 { background: #fae3e0; color: #b03a2e; }
+    .todo .pri.低 { background: #eef1f5; color: #8b95a5; }
+    .todo .del { border: none; background: none; color: #b7c0cd; cursor: pointer; font-size: 15px; }
+
+    /* 文書 */
+    .doc { padding: 13px; background: #fff; border: 1px solid #dfe5ee; border-radius: 10px; }
+    .doc h3 { font-size: 14px; }
+    .doc .meta { font-size: 12px; color: #7b8798; margin: 4px 0 9px; }
+    .doc .actions { display: flex; gap: 8px; }
+    .doc a, .doc button {
+      font-size: 12px; padding: 5px 11px; border: 1px solid #c5cfdd; border-radius: 8px;
+      background: #fff; color: #2f5d8c; cursor: pointer; text-decoration: none;
+    }
+    .doc pre {
+      display: none; margin-top: 10px; padding: 11px; background: #f7f9fc;
+      border-radius: 8px; font-size: 12px; line-height: 1.7; white-space: pre-wrap;
+      max-height: 420px; overflow-y: auto;
+    }
+    .empty { color: #8b95a5; font-size: 13px; text-align: center; padding: 28px 0; }
+
+    /* 入力欄 */
+    form { display: flex; gap: 8px; padding: 12px 18px; background: #fff; border-top: 1px solid #dfe5ee; }
+    form input[type=text] { flex: 1; padding: 10px 14px; border: 1px solid #c5cfdd; border-radius: 10px; font-size: 14px; }
+    form select { padding: 10px 8px; border: 1px solid #c5cfdd; border-radius: 10px; font-size: 13px; }
+    form input[type=date] { padding: 9px 8px; border: 1px solid #c5cfdd; border-radius: 10px; font-size: 13px; }
+    form button { padding: 10px 18px; border: none; border-radius: 10px; background: #2f5d8c; color: #fff; font-size: 14px; cursor: pointer; }
+    form button:disabled { opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔍📝✅ 仕事の秘書チーム</h1>
+    <p>サトル(リサーチ)・カエデ(企画書ドラフト)・ソラ(Todo管理)</p>
+    <nav>
+      <button data-tab="chat" class="active">チャット</button>
+      <button data-tab="todos">Todo<span class="badge" id="todoCount">0</span></button>
+      <button data-tab="docs">文書<span class="badge" id="docCount">0</span></button>
+    </nav>
+  </header>
+
+  <main>
+    <div class="panel active" id="panel-chat">
+      <div class="msg team">✅ ソラ: こんにちは。今日やることを教えてください。会話に出てきたタスクは自動でTodoに登録します。
+🔍 サトル: 調べものはウェブ検索して、出典つきでお答えします。
+📝 カエデ: 「〜の企画書をたたき台で」と言っていただければドラフトします。書いた文書は「文書」タブからMarkdownで落とせます。</div>
+    </div>
+    <div class="panel" id="panel-todos"></div>
+    <div class="panel" id="panel-docs"></div>
+  </main>
+
+  <form id="chatForm">
+    <input type="text" id="chatInput" placeholder="例: 来週の企画会議までに競合の価格をまとめたい" autocomplete="off">
+    <button type="submit" id="chatSend">送信</button>
+  </form>
+
+  <form id="todoForm" style="display:none">
+    <input type="text" id="todoTitle" placeholder="やることを追加" autocomplete="off">
+    <input type="date" id="todoDue">
+    <select id="todoPriority"><option>高</option><option selected>中</option><option>低</option></select>
+    <button type="submit">追加</button>
+  </form>
+
+  <script>
+    const chat = document.getElementById("panel-chat");
+    const chatForm = document.getElementById("chatForm");
+    const chatInput = document.getElementById("chatInput");
+    const chatSend = document.getElementById("chatSend");
+    const todoForm = document.getElementById("todoForm");
+    const main = document.querySelector("main");
+
+    let currentTab = "chat";
+
+    // ---------- タブ切り替え ----------
+    document.querySelectorAll("nav button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        currentTab = btn.dataset.tab;
+        document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b === btn));
+        document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + currentTab));
+        chatForm.style.display = currentTab === "chat" ? "flex" : "none";
+        todoForm.style.display = currentTab === "todos" ? "flex" : "none";
+        main.scrollTop = 0;
+        if (currentTab === "todos") loadTodos();
+        if (currentTab === "docs") loadDocs();
+      });
+    });
+
+    // ---------- チャット ----------
+    function addMsg(text, cls) {
+      const div = document.createElement("div");
+      div.className = "msg " + cls;
+      div.textContent = text;
+      chat.appendChild(div);
+      main.scrollTop = main.scrollHeight;
+      return div;
+    }
+
+    function addSources(sources) {
+      const div = document.createElement("div");
+      div.className = "sources";
+      div.appendChild(document.createTextNode("参照: "));
+      sources.slice(0, 8).forEach((s, i) => {
+        if (i > 0) div.appendChild(document.createTextNode(" / "));
+        const a = document.createElement("a");
+        a.href = s.url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = s.title || s.url;
+        div.appendChild(a);
+      });
+      chat.appendChild(div);
+      main.scrollTop = main.scrollHeight;
+    }
+
+    chatForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = chatInput.value.trim();
+      if (!text) return;
+      addMsg(text, "user");
+      chatInput.value = "";
+      chatSend.disabled = true;
+      const waiting = addMsg("チームが作業しています…(調べものがある場合は少し時間がかかります)", "info");
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        });
+        const data = await res.json();
+        waiting.remove();
+        if (!res.ok) throw new Error(data.detail || "エラーが発生しました");
+        addMsg(data.reply, "team");
+        if (data.sources && data.sources.length) addSources(data.sources);
+        const notes = [];
+        if (data.todos_added) notes.push(`📝 Todoを${data.todos_added}件登録しました`);
+        if (data.todos_completed && data.todos_completed.length) notes.push(`✅ Todoを${data.todos_completed.length}件完了にしました`);
+        if (data.drafts && data.drafts.length) notes.push(`📄 「${data.drafts.map(d => d.title).join("」「")}」を保存しました`);
+        if (notes.length) addMsg(notes.join(" / "), "info");
+        refreshCounts();
+      } catch (err) {
+        waiting.textContent = "エラー: " + err.message;
+      } finally {
+        chatSend.disabled = false;
+        chatInput.focus();
+      }
+    });
+
+    // ---------- Todo ----------
+    async function loadTodos() {
+      const panel = document.getElementById("panel-todos");
+      const todos = await (await fetch("/api/todos?status=all")).json();
+      panel.innerHTML = "";
+      if (!todos.length) {
+        panel.innerHTML = '<div class="empty">Todoはまだありません。チャットで話すと自動で登録されます。</div>';
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      todos.sort((a, b) => (a.status === b.status ? 0 : a.status === "open" ? -1 : 1));
+      for (const t of todos) {
+        const row = document.createElement("div");
+        row.className = "todo" + (t.status === "done" ? " done" : "");
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = t.status === "done";
+        cb.addEventListener("change", async () => {
+          await fetch(`/api/todos/${t.id}/${cb.checked ? "done" : "reopen"}`, { method: "POST" });
+          refreshCounts();
+        });
+
+        const body = document.createElement("div");
+        body.className = "body";
+        const title = document.createElement("div");
+        title.textContent = t.title;
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const pri = document.createElement("span");
+        pri.className = "pri " + t.priority;
+        pri.textContent = t.priority;
+        meta.appendChild(pri);
+        if (t.due) {
+          const due = document.createElement("span");
+          due.textContent = "  期限 " + t.due;
+          if (t.status === "open" && t.due < today) due.className = "overdue";
+          meta.appendChild(due);
+        }
+        body.append(title, meta);
+
+        const del = document.createElement("button");
+        del.className = "del";
+        del.textContent = "✕";
+        del.title = "削除";
+        del.addEventListener("click", async () => {
+          await fetch(`/api/todos/${t.id}`, { method: "DELETE" });
+          refreshCounts();
+        });
+
+        row.append(cb, body, del);
+        panel.appendChild(row);
+      }
+    }
+
+    todoForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const title = document.getElementById("todoTitle").value.trim();
+      if (!title) return;
+      await fetch("/api/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          due: document.getElementById("todoDue").value || null,
+          priority: document.getElementById("todoPriority").value,
+        }),
+      });
+      document.getElementById("todoTitle").value = "";
+      document.getElementById("todoDue").value = "";
+      refreshCounts();
+    });
+
+    // ---------- 文書 ----------
+    async function loadDocs() {
+      const panel = document.getElementById("panel-docs");
+      const docs = await (await fetch("/api/drafts")).json();
+      panel.innerHTML = "";
+      if (!docs.length) {
+        panel.innerHTML = '<div class="empty">文書はまだありません。「〜の企画書をたたき台で作って」と頼んでみてください。</div>';
+        return;
+      }
+      for (const d of docs) {
+        const card = document.createElement("div");
+        card.className = "doc";
+        const h3 = document.createElement("h3");
+        h3.textContent = d.title;
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = "最終更新 " + d.updated_at.replace("T", " ").slice(0, 16);
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        const pre = document.createElement("pre");
+
+        const view = document.createElement("button");
+        view.textContent = "本文を見る";
+        view.addEventListener("click", async () => {
+          if (pre.style.display === "block") {
+            pre.style.display = "none";
+            view.textContent = "本文を見る";
+            return;
+          }
+          if (!pre.textContent) {
+            const full = await (await fetch(`/api/drafts/${d.id}`)).json();
+            pre.textContent = full.content;
+          }
+          pre.style.display = "block";
+          view.textContent = "閉じる";
+        });
+
+        const dl = document.createElement("a");
+        dl.href = `/api/drafts/${d.id}/download`;
+        dl.textContent = "⬇ Markdownで保存";
+
+        const del = document.createElement("button");
+        del.textContent = "削除";
+        del.addEventListener("click", async () => {
+          await fetch(`/api/drafts/${d.id}`, { method: "DELETE" });
+          refreshCounts();
+        });
+
+        actions.append(view, dl, del);
+        card.append(h3, meta, actions, pre);
+        panel.appendChild(card);
+      }
+    }
+
+    // ---------- バッジ ----------
+    async function refreshCounts() {
+      const [todos, docs] = await Promise.all([
+        (await fetch("/api/todos?status=open")).json(),
+        (await fetch("/api/drafts")).json(),
+      ]);
+      document.getElementById("todoCount").textContent = todos.length;
+      document.getElementById("docCount").textContent = docs.length;
+      if (currentTab === "todos") loadTodos();
+      if (currentTab === "docs") loadDocs();
+    }
+
+    refreshCounts();
+    chatInput.focus();
+  </script>
+</body>
+</html>
